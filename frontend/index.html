@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Café Ambiance - Mood Lighting</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="logo">
+        <span class="logo-icon">☕</span>
+        <span class="logo-text">Café Ambiance</span>
+      </div>
+      <div class="nav-controls">
+        <button id="refresh" class="btn-refresh">↻ Refresh</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title">Café Mood Lighting</h1>
+      <p class="hero-subtitle">Create the perfect ambiance for your space</p>
+      <div class="hero-controls">
+        <label class="ir-label">IR Sensor</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="irSensor" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- Moods Section -->
+  <section class="moods-section">
+    <div class="moods-container">
+      <h2 class="moods-title">Select Your Mood</h2>
+      <div id="moods" class="moods-grid"></div>
+    </div>
+  </section>
+
+  <!-- Settings Panel -->
+  <section class="settings-section">
+    <div class="settings-panel">
+      <h2 class="panel-title">Settings</h2>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label for="backendUrl" class="setting-label">Backend URL</label>
+          <input id="backendUrl" type="text" class="setting-input" value="https://mood-lamp-backend.vercel.app" placeholder="https://mood-lamp-backend.vercel.app" />
+        </div>
+        <div class="setting-item">
+          <label for="espIp" class="setting-label">Device IP</label>
+          <input id="espIp" type="text" class="setting-input" value="http://10.176.110.87" placeholder="http://192.168.170.87" />
+        </div>
+        <div class="setting-item">
+          <label for="multiSpeedSlider" class="setting-label">Multi Transition Speed (ms)</label>
+          <div class="setting-row">
+            <input id="multiSpeedSlider" type="range" min="3" max="200" value="15" step="1" />
+            <span id="multiSpeedValue">15 ms</span>
+          </div>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">Brightness Control</label>
+          <div class="brightness-controls">
+            <button class="btn-brightness" id="btnUltraLow" data-level="ultra-low">Ultra-Low</button>
+            <button class="btn-brightness" id="btnLow" data-level="low">Low</button>
+            <button class="btn-brightness" id="btnMedium" data-level="medium">Medium</button>
+            <button class="btn-brightness" id="btnHigh" data-level="high">High</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>&copy; 2026 Café Ambiance. Exploration Project.</p>
+  </footer>
+
+<script>
+  function getBackend() { return document.getElementById('backendUrl').value.trim(); }
+  function getESP() { return document.getElementById('espIp').value.trim(); }
+
+  function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(x => {
+      const hex = x.toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    }).join('').toUpperCase();
+  }
+
+  function createColorLabel(c) {
+    if (!c || typeof c !== 'object') return 'rgb(0, 0, 0)';
+    const r = (typeof c.r === 'number') ? c.r : 0;
+    const g = (typeof c.g === 'number') ? c.g : 0;
+    const b = (typeof c.b === 'number') ? c.b : 0;
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  async function fetchMoods() {
+    const url = getBackend() + '/moods';
+    try {
+      const res = await fetch(url);
+      const moods = await res.json();
+      renderMoods(moods);
+    } catch (err) {
+      document.getElementById('moods').innerHTML = `<div class="error-message">⚠️ Failed to load moods: ${err.message}</div>`;
+    }
+  }
+
+  function renderMoods(moods) {
+    const container = document.getElementById('moods');
+    container.innerHTML = '';
+
+    if (!moods || moods.length === 0) {
+      container.innerHTML = '<div class="error-message">No moods available</div>';
+      return;
+    }
+
+    moods.forEach((m, index) => {
+      const moodCard = document.createElement('div');
+      moodCard.className = 'mood-card';
+      moodCard.style.animationDelay = `${index * 0.1}s`;
+
+      const color = m.singleColor || { r: 0, g: 0, b: 0 };
+      const colorRgb = createColorLabel(color);
+
+      moodCard.innerHTML = `
+        <div class="mood-card-inner">
+          <h3 class="mood-title">${m.name}</h3>
+          <p class="mood-description">Adjust lighting to your preference</p>
+          <p class="mood-description">Single Color :- One single color on lamp</p>
+          <p class="mood-description">Multi Color :- Multiple colors on lamp</p>
+          <div class="mood-actions">
+            <button class="btn-mood btn-single" data-color='${JSON.stringify(color)}' data-rgb='${colorRgb}'>
+              Single Color
+            </button>
+            <button class="btn-mood btn-multi" data-colors='${JSON.stringify(m.multiColors || [color])}' data-rgb='${colorRgb}'>
+              Multi Color
+            </button>
+          </div>
+        </div>
+      `;
+
+      const singleBtn = moodCard.querySelector('.btn-single');
+      const multiBtn = moodCard.querySelector('.btn-multi');
+
+      singleBtn.onclick = () => {
+        triggerMoodAnimation(moodCard, colorRgb);
+        sendSingle(color);
+      };
+      multiBtn.onclick = () => {
+        triggerMoodAnimation(moodCard, colorRgb);
+        sendMulti(m.multiColors || [color]);
+      };
+
+      container.appendChild(moodCard);
+    });
+  }
+
+  function triggerMoodAnimation(card, colorRgb) {
+    card.style.setProperty('--mood-color', colorRgb);
+    card.classList.add('mood-fill');
+    setTimeout(() => {
+      card.classList.remove('mood-fill');
+    }, 1400);
+  }
+
+  async function sendBrightness(level) {
+    const esp = getESP();
+    try {
+      const res = await fetch(esp + '/brightness/' + level, {
+        method: 'GET'
+      });
+      console.log('Brightness set to ' + level + ':', await res.text());
+    } catch (err) {
+      console.error('Failed to set brightness:', err);
+      alert('⚠️ Failed to set brightness. Check ESP IP and try again.');
+    }
+  }
+
+  async function sendSingle(color) {
+    const esp = getESP();
+    try {
+      const res = await fetch(esp + '/color/single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(color)
+      });
+      console.log('Single color sent:', await res.text());
+    } catch (err) {
+      console.error('Failed to contact ESP:', err);
+      alert('⚠️ Failed to contact ESP. Check ESP IP and try again.');
+    }
+  }
+
+  async function sendMulti(colors) {
+    const esp = getESP();
+    try {
+      const res = await fetch(esp + '/color/multi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ colors })
+      });
+      console.log('Multi colors sent:', await res.text());
+    } catch (err) {
+      console.error('Failed to contact ESP:', err);
+      alert('⚠️ Failed to contact ESP. Check ESP IP and try again.');
+    }
+  }
+
+  // Transition speed control for multi-color animations
+  const multiSpeedSlider = document.getElementById('multiSpeedSlider');
+  const multiSpeedValue = document.getElementById('multiSpeedValue');
+
+  function sendSpeedToESP(ms) {
+    const esp = getESP();
+    if (!esp) return;
+    fetch(esp + '/color/speed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ms: Number(ms) })
+    }).then(async res => {
+      if (!res.ok) console.warn('Failed to set speed on ESP', await res.text());
+    }).catch(err => console.warn('Failed to set speed on ESP', err));
+  }
+
+  document.getElementById('btnUltraLow').onclick = () => sendBrightness('ultra-low');
+  document.getElementById('btnLow').onclick = () => sendBrightness('low');
+  document.getElementById('btnMedium').onclick = () => sendBrightness('medium');
+  document.getElementById('btnHigh').onclick = () => sendBrightness('high');
+  
+  // 
+
+  if (multiSpeedSlider) {
+    multiSpeedSlider.addEventListener('input', (e) => {
+      multiSpeedValue.innerText = `${e.target.value} ms`;
+    });
+    multiSpeedSlider.addEventListener('change', (e) => {
+      sendSpeedToESP(e.target.value);
+    });
+  }
+
+  document.getElementById('refresh').onclick = fetchMoods;
+  
+  // IR Sensor Toggle
+  const irSensorToggle = document.getElementById('irSensor');
+  irSensorToggle.onchange = async () => {
+    const esp = getESP();
+    const isEnabled = irSensorToggle.checked;
+    try {
+      console.log('Sending IR toggle request to:', esp + '/ir/toggle', { enabled: isEnabled });
+      const res = await fetch(esp + '/ir/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: isEnabled })
+      });
+      const responseText = await res.text();
+      console.log('IR Sensor response:', res.status, responseText);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${responseText}`);
+      }
+      console.log('IR Sensor toggled:', isEnabled ? 'ON' : 'OFF');
+    } catch (err) {
+      console.error('Failed to toggle IR Sensor:', err);
+      alert('⚠️ Failed to toggle IR Sensor.\nError: ' + err.message + '\n\nCheck ESP IP and ensure endpoint exists.');
+      // Revert toggle on error
+      irSensorToggle.checked = !isEnabled;
+    }
+  };
+  
+  fetchMoods();
+  // send initial speed to device
+  if (multiSpeedSlider) sendSpeedToESP(Number(multiSpeedSlider.value));
+</script>
+
+</body>
+</html>

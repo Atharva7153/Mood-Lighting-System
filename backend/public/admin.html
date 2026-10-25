@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mood Lamp — Admin</title>
+  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><span>🎨</span> Mood Lamp — Admin</h1>
+      <p class="subtitle">Create and manage mood lighting presets</p>
+    </header>
+
+    <div class="control-bar">
+      <label class="url-input-group">Backend URL: <input id="backendUrl" value="https://mood-lamp-backend.vercel.app" class="url-input"/></label>
+      <button id="refresh" class="btn btn-secondary">Refresh</button>
+    </div>
+
+    <section class="form-section">
+      <h2>Add Mood</h2>
+      <form id="addMoodForm" class="mood-form">
+        <div class="form-group">
+          <label for="moodName" class="form-label">Mood Name:</label>
+          <input id="moodName" type="text" class="form-input" required/>
+        </div>
+
+        <div class="form-group">
+          <label for="singleColorPicker" class="form-label">Single Color:</label>
+          <div class="color-picker-wrapper">
+            <input id="singleColorPicker" type="color" class="color-picker" value="#FF8888"/>
+            <span id="singleColorPreview" class="color-preview">rgb(255, 136, 136)</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Multi Colors:</label>
+          <div id="multiColorsContainer" class="multi-colors-container"></div>
+          <button type="button" id="addColorBtn" class="btn btn-secondary btn-sm">+ Add Color</button>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Create Mood</button>
+      </form>
+    </section>
+
+    <section class="moods-section">
+      <h2>Existing Moods</h2>
+      <div id="moodList" class="moods-list"></div>
+    </section>
+
+    <div id="status" class="status-message"></div>
+  </div>
+
+  <!-- Custom Modal -->
+  <div id="modalOverlay" class="modal-overlay"></div>
+  <div id="customModal" class="custom-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">Modal Title</h3>
+        <button type="button" class="modal-close" id="modalCloseBtn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="modalMessage">Modal message</p>
+      </div>
+      <div class="modal-footer" id="modalFooter">
+        <button type="button" class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="modalConfirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Mood Modal -->
+  <div id="editModalOverlay" class="modal-overlay"></div>
+  <div id="editMoodModal" class="custom-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="editModalTitle">Edit Mood</h3>
+        <button type="button" class="modal-close" id="editModalCloseBtn">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="editMoodForm" class="mood-form">
+          <div class="form-group">
+            <label for="editMoodName" class="form-label">Mood Name:</label>
+            <input id="editMoodName" type="text" class="form-input" disabled/>
+          </div>
+
+          <div class="form-group">
+            <label for="editSingleColorPicker" class="form-label">Single Color:</label>
+            <div class="color-picker-wrapper">
+              <input id="editSingleColorPicker" type="color" class="color-picker"/>
+              <span id="editSingleColorPreview" class="color-preview"></span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Multi Colors:</label>
+            <div id="editMultiColorsContainer" class="multi-colors-container"></div>
+            <button type="button" id="editAddColorBtn" class="btn btn-secondary btn-sm">+ Add Color</button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="editModalCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="editModalSaveBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Custom Modal System
+    const modal = {
+      overlay: document.getElementById('modalOverlay'),
+      container: document.getElementById('customModal'),
+      title: document.getElementById('modalTitle'),
+      message: document.getElementById('modalMessage'),
+      footer: document.getElementById('modalFooter'),
+      confirmBtn: document.getElementById('modalConfirmBtn'),
+      cancelBtn: document.getElementById('modalCancelBtn'),
+      closeBtn: document.getElementById('modalCloseBtn'),
+      resolve: null,
+      isOpen: false,
+
+      show(options = {}) {
+        this.title.textContent = options.title || 'Notice';
+        this.message.textContent = options.message || '';
+      
+        const hasConfirm = options.type === 'confirm' || options.onConfirm;
+        this.footer.style.display = hasConfirm ? 'flex' : 'none';
+      
+        if (hasConfirm) {
+          this.confirmBtn.textContent = options.confirmText || 'Confirm';
+          this.cancelBtn.textContent = options.cancelText || 'Cancel';
+          this.confirmBtn.className = options.confirmClass || 'btn btn-primary';
+          this.cancelBtn.className = options.cancelClass || 'btn btn-secondary';
+        }
+
+        const icon = options.icon || '';
+        if (icon) {
+          this.title.textContent = icon + ' ' + this.title.textContent;
+        }
+
+        this.overlay.classList.add('active');
+        this.container.classList.add('active');
+        this.isOpen = true;
+
+        return new Promise((resolve) => {
+          this.resolve = resolve;
+        });
+      },
+
+      close(result = false) {
+        this.overlay.classList.remove('active');
+        this.container.classList.remove('active');
+        this.isOpen = false;
+        if (this.resolve) {
+          this.resolve(result);
+          this.resolve = null;
+        }
+      },
+
+      alert(message, title = 'Alert') {
+        return this.show({
+          title,
+          message,
+          icon: 'ℹ️',
+          type: 'alert'
+        });
+      },
+
+      error(message, title = 'Error') {
+        return this.show({
+          title,
+          message,
+          icon: '❌',
+          type: 'alert'
+        });
+      },
+
+      success(message, title = 'Success') {
+        return this.show({
+          title,
+          message,
+          icon: '✓',
+          type: 'alert'
+        });
+      },
+
+      confirm(message, title = 'Confirm') {
+        return this.show({
+          title,
+          message,
+          icon: '❓',
+          type: 'confirm',
+          confirmText: 'Yes',
+          cancelText: 'No',
+          confirmClass: 'btn btn-danger',
+          cancelClass: 'btn btn-secondary'
+        });
+      }
+    };
+
+    // Modal event listeners
+    modal.closeBtn.addEventListener('click', () => modal.close(false));
+    modal.overlay.addEventListener('click', () => modal.close(false));
+    modal.cancelBtn.addEventListener('click', () => modal.close(false));
+    modal.confirmBtn.addEventListener('click', () => modal.close(true));
+
+    // Edit Modal System
+    const editModal = {
+      overlay: document.getElementById('editModalOverlay'),
+      container: document.getElementById('editMoodModal'),
+      title: document.getElementById('editModalTitle'),
+      closeBtn: document.getElementById('editModalCloseBtn'),
+      cancelBtn: document.getElementById('editModalCancelBtn'),
+      saveBtn: document.getElementById('editModalSaveBtn'),
+      form: document.getElementById('editMoodForm'),
+      currentMood: null,
+      resolve: null,
+      isOpen: false,
+
+      show(mood) {
+        this.currentMood = mood;
+        this.title.textContent = `Edit Mood: ${mood.name}`;
+        
+        // Set mood name (disabled)
+        document.getElementById('editMoodName').value = mood.name;
+        
+        // Set single color
+        const singleHex = rgbToHex(mood.singleColor.r, mood.singleColor.g, mood.singleColor.b);
+        document.getElementById('editSingleColorPicker').value = singleHex;
+        const rgb = hexToRgb(singleHex);
+        document.getElementById('editSingleColorPreview').innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+        
+        // Clear and populate multi colors
+        document.getElementById('editMultiColorsContainer').innerHTML = '';
+        if (mood.multiColors && mood.multiColors.length > 0) {
+          mood.multiColors.forEach(color => {
+            const hex = rgbToHex(color.r, color.g, color.b);
+            addEditMultiColorInput(hex);
+          });
+        } else {
+          addEditMultiColorInput('#FF0000');
+        }
+
+        this.overlay.classList.add('active');
+        this.container.classList.add('active');
+        this.isOpen = true;
+
+        return new Promise((resolve) => {
+          this.resolve = resolve;
+        });
+      },
+
+      close(result = false) {
+        this.overlay.classList.remove('active');
+        this.container.classList.remove('active');
+        this.isOpen = false;
+        if (this.resolve) {
+          this.resolve(result);
+          this.resolve = null;
+        }
+      }
+    };
+
+    // Edit modal event listeners
+    editModal.closeBtn.addEventListener('click', () => editModal.close(false));
+    editModal.overlay.addEventListener('click', () => editModal.close(false));
+    editModal.cancelBtn.addEventListener('click', () => editModal.close(false));
+
+    editModal.saveBtn.addEventListener('click', async () => {
+      const singleHex = document.getElementById('editSingleColorPicker').value;
+      const single = hexToRgb(singleHex);
+      
+      const multiInputs = document.querySelectorAll('#editMultiColorsContainer input[type="color"]');
+      const multi = Array.from(multiInputs).map(i => hexToRgb(i.value));
+
+      const payload = { singleColor: single, multiColors: multi };
+      
+      try {
+        const res = await fetch(getBackend() + '/moods/' + editModal.currentMood._id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Update failed');
+        await modal.success(`Mood "${editModal.currentMood.name}" updated successfully!`, 'Success');
+        editModal.close(true);
+        fetchMoods();
+      } catch (err) {
+        await modal.error('Failed to update mood: ' + err, 'Error');
+      }
+    });
+
+    document.getElementById('editSingleColorPicker').addEventListener('input', (e) => {
+      const rgb = hexToRgb(e.target.value);
+      document.getElementById('editSingleColorPreview').innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    });
+
+    function addEditMultiColorInput(hexValue) {
+      const container = document.getElementById('editMultiColorsContainer');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'color-input-row';
+    
+      const colorPicker = document.createElement('input');
+      colorPicker.type = 'color';
+      colorPicker.className = 'color-picker';
+      colorPicker.value = hexValue || '#FF0000';
+    
+      const label = document.createElement('span');
+      label.className = 'color-value';
+      const updateLabel = () => {
+        const rgb = hexToRgb(colorPicker.value);
+        label.innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+      };
+      colorPicker.addEventListener('input', updateLabel);
+      updateLabel();
+    
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-danger btn-sm';
+      remove.innerText = '✕';
+      remove.onclick = () => wrapper.remove();
+    
+      wrapper.appendChild(colorPicker);
+      wrapper.appendChild(label);
+      wrapper.appendChild(remove);
+      container.appendChild(wrapper);
+    }
+
+    document.getElementById('editAddColorBtn').onclick = () => addEditMultiColorInput('#FF0000');
+
+    async function openEditMoodModal(mood) {
+      await editModal.show(mood);
+    }
+
+    function getBackend() { return document.getElementById('backendUrl').value.trim(); }
+
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 0, b: 0 };
+    }
+
+    function rgbToHex(r, g, b) {
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+
+    function createColorLabel(c) {
+      if (!c || typeof c !== 'object') return 'rgb(0, 0, 0)';
+      const r = (typeof c.r === 'number') ? c.r : 0;
+      const g = (typeof c.g === 'number') ? c.g : 0;
+      const b = (typeof c.b === 'number') ? c.b : 0;
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    async function fetchMoods() {
+      const url = getBackend() + '/moods';
+      try {
+        const res = await fetch(url);
+        const moods = await res.json();
+        renderMoods(moods);
+      } catch (err) {
+        console.error('fetchMoods error', err);
+        document.getElementById('moodList').innerText = 'Failed to load moods: ' + (err && err.message ? err.message : err);
+      }
+    }
+
+    function renderMoods(moods) {
+      const container = document.getElementById('moodList');
+      container.innerHTML = '';
+      if (moods.length === 0) {
+        container.innerHTML = '<p class="no-moods">No moods yet. Create one to get started!</p>';
+        return;
+      }
+      moods.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'mood-card';
+      
+        const title = document.createElement('strong');
+        title.className = 'mood-name';
+        title.innerText = m.name;
+        div.appendChild(title);
+
+        const colorsDiv = document.createElement('div');
+        colorsDiv.className = 'mood-colors';
+      
+        const singleColor = createColorLabel(m.singleColor);
+        const colorBox = document.createElement('div');
+        colorBox.className = 'color-box';
+        colorBox.style.backgroundColor = singleColor;
+        colorBox.title = singleColor;
+        colorsDiv.appendChild(colorBox);
+      
+        div.appendChild(colorsDiv);
+
+        // Buttons container
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'mood-buttons';
+
+        // Edit button
+        const edit = document.createElement('button');
+        edit.className = 'btn btn-primary btn-sm';
+        edit.innerText = 'Edit';
+        edit.onclick = async () => {
+          await openEditMoodModal(m);
+        };
+        buttonsDiv.appendChild(edit);
+
+        // Delete button
+        const del = document.createElement('button');
+        del.className = 'btn btn-danger btn-sm';
+        del.innerText = 'Delete';
+        del.onclick = async () => {
+          const confirmed = await modal.confirm(`Are you sure you want to delete "${m.name}"?`, 'Delete Mood');
+          if (!confirmed) return;
+          try {
+            await fetch(getBackend() + '/moods/' + m._id, { method: 'DELETE' });
+            fetchMoods();
+          } catch (err) { modal.error('Delete failed: ' + err, 'Error'); }
+        };
+        buttonsDiv.appendChild(del);
+
+        div.appendChild(buttonsDiv);
+        container.appendChild(div);
+      });
+    }
+
+    function addMultiColorInput(rgbValue) {
+      const container = document.getElementById('multiColorsContainer');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'color-input-row';
+    
+      const colorPicker = document.createElement('input');
+      colorPicker.type = 'color';
+      colorPicker.className = 'color-picker';
+    
+      if (rgbValue) {
+        const parts = rgbValue.split(',').map(x => Number(x.trim()) || 0);
+        colorPicker.value = rgbToHex(parts[0] || 0, parts[1] || 0, parts[2] || 0);
+      } else {
+        colorPicker.value = '#FF0000';
+      }
+    
+      const label = document.createElement('span');
+      label.className = 'color-value';
+      const updateLabel = () => {
+        const rgb = hexToRgb(colorPicker.value);
+        label.innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+      };
+      colorPicker.addEventListener('input', updateLabel);
+      updateLabel();
+    
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-danger btn-sm';
+      remove.innerText = '✕';
+      remove.onclick = () => wrapper.remove();
+    
+      wrapper.appendChild(colorPicker);
+      wrapper.appendChild(label);
+      wrapper.appendChild(remove);
+      container.appendChild(wrapper);
+    }
+
+    document.getElementById('addColorBtn').onclick = () => addMultiColorInput('');
+    addMultiColorInput('255,170,90');
+    addMultiColorInput('255,130,70');
+    addMultiColorInput('255,210,150');
+
+    document.getElementById('singleColorPicker').addEventListener('input', (e) => {
+      const rgb = hexToRgb(e.target.value);
+      document.getElementById('singleColorPreview').innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    });
+
+    document.getElementById('addMoodForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('moodName').value.trim();
+      const singleHex = document.getElementById('singleColorPicker').value;
+      const single = hexToRgb(singleHex);
+    
+      const multiInputs = document.querySelectorAll('#multiColorsContainer input[type="color"]');
+      const multi = Array.from(multiInputs).map(i => hexToRgb(i.value));
+
+      const payload = { name, singleColor: single, multiColors: multi };
+      try {
+        const res = await fetch(getBackend() + '/moods', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Add failed');
+        await modal.success(`Mood "${name}" created successfully!`, 'Success');
+        document.getElementById('addMoodForm').reset();
+        document.getElementById('singleColorPicker').value = '#FF8888';
+        document.getElementById('singleColorPreview').innerText = 'rgb(255, 136, 136)';
+        document.getElementById('multiColorsContainer').innerHTML = '';
+        addMultiColorInput('255,170,90');
+        addMultiColorInput('255,130,70');
+        addMultiColorInput('255,210,150');
+        fetchMoods();
+      } catch (err) {
+        await modal.error('Failed to add mood: ' + err, 'Error');
+      }
+    };
+
+    // initialize backend input to current origin when empty (useful when served from same host)
+    document.addEventListener('DOMContentLoaded', () => {
+      const backendInput = document.getElementById('backendUrl');
+      if (!backendInput.value || backendInput.value.trim() === '' || backendInput.value.includes('localhost')) {
+        backendInput.value = window.location.origin;
+      }
+    });
+
+    document.getElementById('refresh').onclick = fetchMoods;
+    fetchMoods();
+    </script>
+  </body>
+</html>
